@@ -1,0 +1,42 @@
+# Build outputs
+build/
+cmake-build-*/
+out/
+bin/
+obj/
+
+# CMake generated files
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+compile_commands.json
+CTestTestfile.cmake
+Makefile
+
+# JUCE/plugin artifacts
+*_artefacts/
+*.component/
+*.vst3/
+*.app/
+*.aaxplugin/
+*.lv2/
+
+# Logs and temporary files
+*.log
+drag_log.txt
+*.tmp
+*.temp
+.DS_Store
+
+# IDE/editor state
+.idea/
+.vscode/
+*.xcworkspace/
+*.xcodeproj/
+
+# Audio scratch exports
+*.wav
+*.aif
+*.aiff
+*.mp3
+*.flac
