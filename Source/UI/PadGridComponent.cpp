@@ -58,11 +58,11 @@ public:
         if (isVisible)
         {
             juce::Colour accentColour;
-            if (category == "kick")
+            if (category == "body")
                 accentColour = juce::Colour::fromString ("#FFA35C50");
-            else if (category == "snare")
+            else if (category == "motion")
                 accentColour = juce::Colour::fromString ("#FF7C9482");
-            else if (category == "hat")
+            else if (category == "noise")
                 accentColour = juce::Colour::fromString ("#FFC4A673");
             else
                 accentColour = juce::Colour::fromString ("#FF6C809A");
@@ -84,11 +84,11 @@ public:
         juce::Colour textColour = juce::Colour::fromString("#FFA0A0A0");
         
         juce::Colour accentColour;
-        if (category == "kick")
+        if (category == "body")
             accentColour = juce::Colour::fromString ("#FFA35C50");
-        else if (category == "snare")
+        else if (category == "motion")
             accentColour = juce::Colour::fromString ("#FF7C9482");
-        else if (category == "hat")
+        else if (category == "noise")
             accentColour = juce::Colour::fromString ("#FFC4A673");
         else
             accentColour = juce::Colour::fromString ("#FF6C809A");

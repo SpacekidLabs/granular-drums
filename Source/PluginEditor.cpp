@@ -1017,8 +1017,11 @@ void GranularDrumsEditor::updateWaveforms()
         {
             int startSample = activeMarkers[(size_t)mIdx].sampleIndex;
             int endSample = selectionEndSample;
-            if ((size_t)(mIdx + 1) < activeMarkers.size())
+            if (activeMarkers[(size_t)mIdx].lengthInSamples > 0)
+                endSample = startSample + activeMarkers[(size_t)mIdx].lengthInSamples;
+            else if ((size_t)(mIdx + 1) < activeMarkers.size())
                 endSample = activeMarkers[(size_t)(mIdx + 1)].sampleIndex;
+            endSample = juce::jlimit (startSample, buffer.getNumSamples(), endSample);
                 
             int numSamples = endSample - startSample;
             padGrid.setPadWaveformData (i, &buffer, startSample, numSamples, activeMarkers[(size_t)mIdx].category);

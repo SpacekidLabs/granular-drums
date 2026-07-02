@@ -45,10 +45,8 @@ target_sources(GranularDrums
         Source/DSP/PadPlaybackEngine.cpp
         Source/DSP/PadPlaybackEngine.h
         Source/DSP/GranularSynth.cpp
-        Source/DSP/HPSSProcessor.cpp
-        Source/DSP/HPSSProcessor.h
-        Source/DSP/OnsetVotingEngine.cpp
-        Source/DSP/OnsetVotingEngine.h
+        Source/DSP/RegionAnalysisEngine.cpp
+        Source/DSP/RegionAnalysisEngine.h
         Source/UI/GranularDrumsLookAndFeel.cpp
         Source/UI/GranularDrumsLookAndFeel.h
         Source/UI/PadGridComponent.cpp

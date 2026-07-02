@@ -20,13 +20,14 @@ void removeChildrenWithName (juce::ValueTree& tree, const juce::Identifier& chil
     }
 }
 
-juce::ValueTree createMarkerTree (const char* treeName, const std::vector<OnsetMarker>& markers)
+juce::ValueTree createMarkerTree (const char* treeName, const std::vector<RegionMarker>& markers)
 {
     juce::ValueTree tree (treeName);
     for (const auto& marker : markers)
     {
         juce::ValueTree markerTree (markerStateName);
         markerTree.setProperty ("sampleIndex", marker.sampleIndex, nullptr);
+        markerTree.setProperty ("lengthInSamples", marker.lengthInSamples, nullptr);
         markerTree.setProperty ("confidence", marker.confidence, nullptr);
         markerTree.setProperty ("category", marker.category, nullptr);
         tree.addChild (markerTree, -1, nullptr);
@@ -34,9 +35,9 @@ juce::ValueTree createMarkerTree (const char* treeName, const std::vector<OnsetM
     return tree;
 }
 
-std::vector<OnsetMarker> readMarkerTree (const juce::ValueTree& tree)
+std::vector<RegionMarker> readMarkerTree (const juce::ValueTree& tree)
 {
-    std::vector<OnsetMarker> markers;
+    std::vector<RegionMarker> markers;
     markers.reserve ((size_t) tree.getNumChildren());
 
     for (int i = 0; i < tree.getNumChildren(); ++i)
@@ -45,10 +46,11 @@ std::vector<OnsetMarker> readMarkerTree (const juce::ValueTree& tree)
         if (! markerTree.hasType (markerStateName))
             continue;
 
-        OnsetMarker marker;
+        RegionMarker marker;
         marker.sampleIndex = (int) markerTree.getProperty ("sampleIndex", 0);
+        marker.lengthInSamples = (int) markerTree.getProperty ("lengthInSamples", 0);
         marker.confidence = (float) (double) markerTree.getProperty ("confidence", 0.0);
-        marker.category = markerTree.getProperty ("category", "snare").toString();
+        marker.category = markerTree.getProperty ("category", "texture").toString();
         markers.push_back (marker);
     }
 
@@ -72,7 +74,7 @@ GranularDrumsProcessor::GranularDrumsProcessor()
     apvts (*this, nullptr, "Parameters", createParameterLayout())
 {
     clearPattern();
-    analysisEngine.onAnalysisFinished = [this] (const std::vector<OnsetMarker>& markers,
+    analysisEngine.onAnalysisFinished = [this] (const std::vector<RegionMarker>& markers,
                                                 const juce::AudioBuffer<float>& sourceBuffer,
                                                 const juce::File& sourceFile,
                                                 double sourceSampleRate)
@@ -103,9 +105,15 @@ GranularDrumsProcessor::~GranularDrumsProcessor()
 
 void GranularDrumsProcessor::_assignSliceToPad (int padIndex)
 {
+    if (padIndex < 0 || padIndex >= 16)
+        return;
+
     int mIdx = padMarkerIndices[padIndex];
     if (mIdx >= 0 && (size_t)mIdx < activeMarkers.size())
     {
+        if (padSoundSeeds[padIndex] == 0)
+            padSoundSeeds[padIndex] = _createPadSoundSeed();
+
         int startSample = activeMarkers[(size_t)mIdx].sampleIndex;
         int numSamplesInFile = currentBuffer.getNumSamples();
         
@@ -113,8 +121,12 @@ void GranularDrumsProcessor::_assignSliceToPad (int padIndex)
         int selectionEndSample = juce::roundToInt (endRatio * numSamplesInFile);
         
         int endSample = selectionEndSample;
-        if ((size_t)(mIdx + 1) < activeMarkers.size())
+        if (activeMarkers[(size_t)mIdx].lengthInSamples > 0)
+            endSample = startSample + activeMarkers[(size_t)mIdx].lengthInSamples;
+        else if ((size_t)(mIdx + 1) < activeMarkers.size())
             endSample = activeMarkers[(size_t)(mIdx + 1)].sampleIndex;
+
+        endSample = juce::jlimit (startSample, numSamplesInFile, endSample);
             
         int numSamples = endSample - startSample;
         juce::String category = activeMarkers[(size_t)mIdx].category;
@@ -163,18 +175,25 @@ void GranularDrumsProcessor::_assignSliceToPad (int padIndex)
         auto* modDepth4Param = apvts.getRawParameterValue ("modDepth4");
             
         if (numSamples > 0)
-            playbackEngine.setPadSlice (padIndex, currentBuffer, startSample, numSamples, pitchParam, decayParam, monoParam, category, globalPitchParam, globalDecayParam, globalGrainSizeParam, globalGrainSprayParam, globalFilterResParam, globalReverseParam, globalAnalogDriftParam, globalGrainSizeJitterParam, globalGrainPitchJitterParam, globalPanJitterParam, globalFilterSweepTimeParam, globalPitchSweepDepthParam, globalLayerBalanceParam, globalLayerDelayParam, globalLayerDetuneParam, globalResonatorMixParam, globalResonatorPitchParam, globalResonatorFeedbackParam, globalLfoRateParam, globalLfoShapeParam, modSrc1Param, modDst1Param, modDepth1Param, modSrc2Param, modDst2Param, modDepth2Param, modSrc3Param, modDst3Param, modDepth3Param, modSrc4Param, modDst4Param, modDepth4Param);
+            playbackEngine.setPadSlice (padIndex, currentBuffer, startSample, numSamples, padSoundSeeds[padIndex], pitchParam, decayParam, monoParam, category, globalPitchParam, globalDecayParam, globalGrainSizeParam, globalGrainSprayParam, globalFilterResParam, globalReverseParam, globalAnalogDriftParam, globalGrainSizeJitterParam, globalGrainPitchJitterParam, globalPanJitterParam, globalFilterSweepTimeParam, globalPitchSweepDepthParam, globalLayerBalanceParam, globalLayerDelayParam, globalLayerDetuneParam, globalResonatorMixParam, globalResonatorPitchParam, globalResonatorFeedbackParam, globalLfoRateParam, globalLfoShapeParam, modSrc1Param, modDst1Param, modDepth1Param, modSrc2Param, modDst2Param, modDepth2Param, modSrc3Param, modDst3Param, modDepth3Param, modSrc4Param, modDst4Param, modDepth4Param);
     }
+}
+
+int GranularDrumsProcessor::_createPadSoundSeed() const
+{
+    return 1 + juce::Random::getSystemRandom().nextInt (0x3fffffff);
 }
 
 void GranularDrumsProcessor::randomizeAllPads()
 {
     if (activeMarkers.empty()) return;
+    suspendProcessing (true);
     playbackEngine.clearPads();
     
     for (int i = 0; i < 16; ++i)
     {
         padMarkerIndices[i] = juce::Random::getSystemRandom().nextInt ((int)activeMarkers.size());
+        padSoundSeeds[i] = _createPadSoundSeed();
         _assignSliceToPad (i);
         
         // Randomize pitch parameter between -12 and +12 semitones
@@ -185,6 +204,7 @@ void GranularDrumsProcessor::randomizeAllPads()
             param->setValueNotifyingHost (param->getNormalisableRange().convertTo0to1 (randomPitch));
         }
     }
+    suspendProcessing (false);
     
     juce::MessageManager::callAsync ([this]() {
         if (auto* editor = dynamic_cast<GranularDrumsEditor*> (getActiveEditor()))
@@ -196,7 +216,9 @@ void GranularDrumsProcessor::randomizePad (int padIndex)
 {
     if (activeMarkers.empty() || padIndex < 0 || padIndex >= 16) return;
     
+    suspendProcessing (true);
     padMarkerIndices[padIndex] = juce::Random::getSystemRandom().nextInt ((int)activeMarkers.size());
+    padSoundSeeds[padIndex] = _createPadSoundSeed();
     _assignSliceToPad (padIndex);
     
     // Randomize pitch parameter between -12 and +12 semitones
@@ -206,6 +228,7 @@ void GranularDrumsProcessor::randomizePad (int padIndex)
         randomPitch = std::round (randomPitch);
         param->setValueNotifyingHost (param->getNormalisableRange().convertTo0to1 (randomPitch));
     }
+    suspendProcessing (false);
     
     juce::MessageManager::callAsync ([this]() {
         if (auto* editor = dynamic_cast<GranularDrumsEditor*> (getActiveEditor()))
@@ -558,7 +581,10 @@ void GranularDrumsProcessor::_writeSampleState (juce::ValueTree& state) const
 
     juce::ValueTree padTree (padAssignmentsStateName);
     for (int i = 0; i < 16; ++i)
+    {
         padTree.setProperty ("pad" + juce::String (i), padMarkerIndices[i], nullptr);
+        padTree.setProperty ("seed" + juce::String (i), padSoundSeeds[i], nullptr);
+    }
     sampleTree.addChild (padTree, -1, nullptr);
 
     state.addChild (sampleTree, -1, nullptr);
@@ -573,7 +599,10 @@ void GranularDrumsProcessor::_restoreSampleState (const juce::ValueTree& state)
         currentBuffer.setSize (0, 0);
         currentMarkers.clear();
         activeMarkers.clear();
+        std::fill_n (padSoundSeeds, 16, 0);
+        suspendProcessing (true);
         playbackEngine.clearPads();
+        suspendProcessing (false);
         return;
     }
 
@@ -596,7 +625,10 @@ void GranularDrumsProcessor::_restoreSampleState (const juce::ValueTree& state)
         currentBuffer.setSize (0, 0);
         currentMarkers.clear();
         activeMarkers.clear();
+        std::fill_n (padSoundSeeds, 16, 0);
+        suspendProcessing (true);
         playbackEngine.clearPads();
+        suspendProcessing (false);
         return;
     }
 
@@ -605,7 +637,12 @@ void GranularDrumsProcessor::_restoreSampleState (const juce::ValueTree& state)
 
     auto padTree = sampleTree.getChildWithName (padAssignmentsStateName);
     for (int i = 0; i < 16; ++i)
+    {
         padMarkerIndices[i] = (int) padTree.getProperty ("pad" + juce::String (i), i);
+        padSoundSeeds[i] = (int) padTree.getProperty ("seed" + juce::String (i), 0);
+        if (padSoundSeeds[i] == 0)
+            padSoundSeeds[i] = _createPadSoundSeed();
+    }
 
     if (activeMarkers.empty())
         updateActiveSlices();
@@ -663,9 +700,11 @@ bool GranularDrumsProcessor::_restoreEmbeddedAudio (const juce::ValueTree& sampl
 
 void GranularDrumsProcessor::_restorePadAssignments()
 {
+    suspendProcessing (true);
     playbackEngine.clearPads();
     for (int i = 0; i < 16; ++i)
         _assignSliceToPad (i);
+    suspendProcessing (false);
 }
 
 juce::AudioProcessorValueTreeState::ParameterLayout GranularDrumsProcessor::createParameterLayout()
@@ -898,12 +937,16 @@ juce::AudioProcessorValueTreeState::ParameterLayout GranularDrumsProcessor::crea
 
 void GranularDrumsProcessor::updateActiveSlices (bool isNewFileLoaded)
 {
+    suspendProcessing (true);
     playbackEngine.clearPads();
     activeMarkers.clear();
     
     int numSamplesInFile = currentBuffer.getNumSamples();
     if (numSamplesInFile <= 0 || currentBuffer.getNumChannels() == 0)
+    {
+        suspendProcessing (false);
         return;
+    }
         
     float startRatio = apvts.getRawParameterValue ("selectionStart")->load();
     float endRatio = apvts.getRawParameterValue ("selectionEnd")->load();
@@ -913,9 +956,45 @@ void GranularDrumsProcessor::updateActiveSlices (bool isNewFileLoaded)
         
     int selectionStartSample = juce::roundToInt (startRatio * numSamplesInFile);
     int selectionEndSample = juce::roundToInt (endRatio * numSamplesInFile);
+
+    const bool usingExplicitRegions = std::any_of (currentMarkers.begin(), currentMarkers.end(), [] (const RegionMarker& marker)
+    {
+        return marker.lengthInSamples > 0;
+    });
+
+    if (usingExplicitRegions)
+    {
+        for (const auto& marker : currentMarkers)
+        {
+            const int regionEnd = marker.sampleIndex + marker.lengthInSamples;
+            if (marker.sampleIndex < selectionEndSample && regionEnd > selectionStartSample)
+                activeMarkers.push_back (marker);
+        }
+
+        if (activeMarkers.empty())
+            activeMarkers.push_back ({ selectionStartSample, juce::jmax (1, selectionEndSample - selectionStartSample), 1.0f, "texture" });
+
+        for (int i = 0; i < 16; ++i)
+        {
+            padMarkerIndices[i] = activeMarkers.empty() ? -1 : i % (int) activeMarkers.size();
+            if (isNewFileLoaded || padSoundSeeds[i] == 0)
+                padSoundSeeds[i] = _createPadSoundSeed();
+
+            if (isNewFileLoaded)
+            {
+                if (auto* param = apvts.getParameter ("decay" + juce::String (i)))
+                    param->setValueNotifyingHost (param->getNormalisableRange().convertTo0to1 (0.25f));
+            }
+
+            _assignSliceToPad (i);
+        }
+
+        suspendProcessing (false);
+        return;
+    }
     
     // Add start of selection as first marker
-    activeMarkers.push_back ({ selectionStartSample, 1.0f });
+    activeMarkers.push_back ({ selectionStartSample, 0, 1.0f, "texture" });
     
     // Add all original markers that fall strictly within the selection window
     for (const auto& marker : currentMarkers)
@@ -1084,6 +1163,8 @@ void GranularDrumsProcessor::updateActiveSlices (bool isNewFileLoaded)
     for (int i = 0; i < 16; ++i)
     {
         padMarkerIndices[i] = targetPadIndices[i];
+        if (isNewFileLoaded || padSoundSeeds[i] == 0)
+            padSoundSeeds[i] = _createPadSoundSeed();
         
         // Apply category-specific decay defaults only when a new file is loaded
         if (isNewFileLoaded)
@@ -1106,6 +1187,8 @@ void GranularDrumsProcessor::updateActiveSlices (bool isNewFileLoaded)
         
         _assignSliceToPad (i);
     }
+
+    suspendProcessing (false);
 }
 
 juce::AudioProcessor* JUCE_CALLTYPE createPluginFilter()

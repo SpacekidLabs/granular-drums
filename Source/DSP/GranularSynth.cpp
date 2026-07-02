@@ -210,7 +210,7 @@ void GranularVoice::startNote (int /*midiNoteNumber*/, float velocity, juce::Syn
         double velocityModPitch = ((double)velocity - 0.7) * 3.0; // Harder hits start higher
         double sweepStartPitchJitter = (juce::Random::getSystemRandom().nextDouble() * 2.0 - 1.0) * 1.5;
         double pitchSweepDepth = gs->getPitchSweepDepthValue();
-        if (gs->getCategory() == "hat")
+        if (gs->getCategory() == "noise")
             pitchSweepDepth = 0.0;
         startPitch = pitchSweepDepth + velocityModPitch + sweepStartPitchJitter;
         
@@ -526,7 +526,7 @@ void GranularVoice::renderNextBlock (juce::AudioBuffer<float>& outputBuffer, int
         
         // Map curve to Filter Cutoff (from 20000Hz down to 1200Hz to keep tail crisp and audible)
         double cutoff = 1200.0 + filterCurve * 18800.0 + (double)(modFilterCutoff * 8000.0f);
-        bool useHighPass = (playingSound->getCategory() == "hat");
+        bool useHighPass = (playingSound->getCategory() == "noise");
         if (useHighPass)
         {
             // For hats, sweep highpass from 6000Hz down to 200Hz

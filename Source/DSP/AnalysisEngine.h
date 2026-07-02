@@ -2,8 +2,7 @@
 
 #include <JuceHeader.h>
 
-#include "HPSSProcessor.h"
-#include "OnsetVotingEngine.h"
+#include "RegionAnalysisEngine.h"
 
 class AnalysisEngine : public juce::Thread
 {
@@ -17,7 +16,7 @@ public:
     bool isAnalyzing() const;
     float getProgress() const;
 
-    std::function<void(const std::vector<OnsetMarker>&,
+    std::function<void(const std::vector<RegionMarker>&,
                        const juce::AudioBuffer<float>&,
                        const juce::File&,
                        double)> onAnalysisFinished;
@@ -30,8 +29,7 @@ private:
     juce::AudioFormatManager formatManager;
     juce::AudioBuffer<float> sourceBuffer;
     
-    HPSSProcessor hpssProcessor;
-    OnsetVotingEngine onsetEngine;
+    RegionAnalysisEngine regionEngine;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (AnalysisEngine)
 };

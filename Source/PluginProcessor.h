@@ -39,8 +39,8 @@ public:
     void triggerPad (int padIndex);
 
     const juce::AudioBuffer<float>& getCurrentBuffer() const { return currentBuffer; }
-    const std::vector<OnsetMarker>& getCurrentMarkers() const { return currentMarkers; }
-    const std::vector<OnsetMarker>& getActiveMarkers() const { return activeMarkers; }
+    const std::vector<RegionMarker>& getCurrentMarkers() const { return currentMarkers; }
+    const std::vector<RegionMarker>& getActiveMarkers() const { return activeMarkers; }
     int getMarkerIndexForPad (int padIndex) const { return padMarkerIndices[padIndex]; }
 
     void updateActiveSlices (bool isNewFileLoaded = false);
@@ -91,6 +91,7 @@ public:
 
 private:
     void _assignSliceToPad (int padIndex);
+    int _createPadSoundSeed() const;
     void _restoreSampleState (const juce::ValueTree& state);
     void _writeSampleState (juce::ValueTree& state) const;
     bool _loadAudioFileIntoBuffer (const juce::File& file, juce::AudioBuffer<float>& destination, double& sampleRateOut) const;
@@ -105,9 +106,10 @@ private:
     MackityProcessor mackityProcessor;
     
     juce::AudioBuffer<float> currentBuffer;
-    std::vector<OnsetMarker> currentMarkers;
-    std::vector<OnsetMarker> activeMarkers;
+    std::vector<RegionMarker> currentMarkers;
+    std::vector<RegionMarker> activeMarkers;
     int padMarkerIndices[16] = {0};
+    int padSoundSeeds[16] = {0};
     juce::String currentSamplePath;
     double currentSampleRate = 44100.0;
 

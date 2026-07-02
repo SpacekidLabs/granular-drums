@@ -1,7 +1,7 @@
 #pragma once
 
 #include <JuceHeader.h>
-#include "../DSP/OnsetVotingEngine.h"
+#include "../DSP/RegionAnalysisEngine.h"
 
 class MainWaveformDisplay : public juce::Component, public juce::FileDragAndDropTarget
 {
@@ -18,7 +18,7 @@ public:
     void fileDragEnter (const juce::StringArray& files, int x, int y) override;
     void fileDragExit (const juce::StringArray& files) override;
 
-    void setWaveformData (const juce::AudioBuffer<float>* buffer, const std::vector<OnsetMarker>* markers);
+    void setWaveformData (const juce::AudioBuffer<float>* buffer, const std::vector<RegionMarker>* markers);
     void setAnalysisState (bool analyzing, float progress);
     void setSelectionRatios (float start, float end);
     float getSelectionStartRatio() const { return selectionStartRatio; }
@@ -46,7 +46,7 @@ private:
     bool isDraggingEnd = false;
     
     const juce::AudioBuffer<float>* audioBuffer = nullptr;
-    const std::vector<OnsetMarker>* onsetMarkers = nullptr;
+    const std::vector<RegionMarker>* regionMarkers = nullptr;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (MainWaveformDisplay)
 };

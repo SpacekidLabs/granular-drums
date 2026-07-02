@@ -8,10 +8,10 @@ MainWaveformDisplay::~MainWaveformDisplay()
 {
 }
 
-void MainWaveformDisplay::setWaveformData (const juce::AudioBuffer<float>* buffer, const std::vector<OnsetMarker>* markers)
+void MainWaveformDisplay::setWaveformData (const juce::AudioBuffer<float>* buffer, const std::vector<RegionMarker>* markers)
 {
     audioBuffer = buffer;
-    onsetMarkers = markers;
+    regionMarkers = markers;
     repaint();
 }
 
@@ -71,7 +71,7 @@ void MainWaveformDisplay::paint (juce::Graphics& g)
         g.drawRoundedRectangle (bounds, 6.0f, 1.0f);
     }
     
-    if (audioBuffer != nullptr && audioBuffer->getNumSamples() > 0 && onsetMarkers != nullptr)
+    if (audioBuffer != nullptr && audioBuffer->getNumSamples() > 0 && regionMarkers != nullptr)
     {
         int width = getWidth();
         float height = getHeight();
@@ -169,17 +169,17 @@ void MainWaveformDisplay::paint (juce::Graphics& g)
         
         // Draw Markers (color-coded by category, limit to first 16 pads)
         int markerCount = 0;
-        for (const auto& marker : *onsetMarkers)
+        for (const auto& marker : *regionMarkers)
         {
             if (markerCount >= 16)
                 break;
                 
             juce::Colour markerColour;
-            if (marker.category == "kick")
+            if (marker.category == "body")
                 markerColour = juce::Colour::fromString ("#FFA35C50");
-            else if (marker.category == "snare")
+            else if (marker.category == "motion")
                 markerColour = juce::Colour::fromString ("#FF7C9482");
-            else if (marker.category == "hat")
+            else if (marker.category == "noise")
                 markerColour = juce::Colour::fromString ("#FFC4A673");
             else
                 markerColour = juce::Colour::fromString ("#FF6C809A");

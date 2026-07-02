@@ -98,11 +98,11 @@ void SequencerGridComponent::timerCallback()
 
 juce::Colour SequencerGridComponent::getCategoryColour (const juce::String& category) const
 {
-    if (category == "kick")
+    if (category == "body")
         return juce::Colour::fromString ("#FFA35C50");
-    else if (category == "snare")
+    else if (category == "motion")
         return juce::Colour::fromString ("#FF7C9482");
-    else if (category == "hat")
+    else if (category == "noise")
         return juce::Colour::fromString ("#FFC4A673");
     else
         return juce::Colour::fromString ("#FF6C809A");
@@ -123,7 +123,7 @@ void SequencerGridComponent::paint (juce::Graphics& g)
     {
         int y = gridY + pad * (cellH + gapY);
 
-        juce::String category = "snare";
+        juce::String category = "texture";
         int markerIdx = processor.getMarkerIndexForPad (pad);
         const auto& activeMarkers = processor.getActiveMarkers();
         if (markerIdx >= 0 && (size_t)markerIdx < activeMarkers.size())

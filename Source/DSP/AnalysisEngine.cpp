@@ -44,13 +44,9 @@ void AnalysisEngine::run()
         sourceBuffer.setSize ((int) reader->numChannels, (int) reader->lengthInSamples);
         reader->read (&sourceBuffer, 0, (int) reader->lengthInSamples, 0, true, true);
         
-        // Step 2: HPSS
+        // Step 2: Texture-region discovery on the decoded source signal
         progress = 0.4f;
-        auto [harmonic, percussive] = hpssProcessor.process (sourceBuffer);
-        
-        // Step 3: Onset Detection on Percussive signal
-        progress = 0.7f;
-        auto markers = onsetEngine.detectOnsets (percussive, reader->sampleRate);
+        auto markers = regionEngine.findRegions (sourceBuffer, reader->sampleRate);
         
         // Dummy sleep for visual feedback during testing
         juce::Thread::sleep (1000);
