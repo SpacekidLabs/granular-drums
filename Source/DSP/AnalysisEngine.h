@@ -17,7 +17,10 @@ public:
     bool isAnalyzing() const;
     float getProgress() const;
 
-    std::function<void(const std::vector<OnsetMarker>&, const juce::AudioBuffer<float>&)> onAnalysisFinished;
+    std::function<void(const std::vector<OnsetMarker>&,
+                       const juce::AudioBuffer<float>&,
+                       const juce::File&,
+                       double)> onAnalysisFinished;
 
 private:
     std::atomic<bool> analyzing { false };

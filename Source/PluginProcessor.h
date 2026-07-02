@@ -91,6 +91,11 @@ public:
 
 private:
     void _assignSliceToPad (int padIndex);
+    void _restoreSampleState (const juce::ValueTree& state);
+    void _writeSampleState (juce::ValueTree& state) const;
+    bool _loadAudioFileIntoBuffer (const juce::File& file, juce::AudioBuffer<float>& destination, double& sampleRateOut) const;
+    bool _restoreEmbeddedAudio (const juce::ValueTree& sampleTree);
+    void _restorePadAssignments();
 
     juce::AudioProcessorValueTreeState apvts;
     juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout();
@@ -103,6 +108,8 @@ private:
     std::vector<OnsetMarker> currentMarkers;
     std::vector<OnsetMarker> activeMarkers;
     int padMarkerIndices[16] = {0};
+    juce::String currentSamplePath;
+    double currentSampleRate = 44100.0;
 
     // Sequencer state and tracking
     bool sequencerSteps[16][16];

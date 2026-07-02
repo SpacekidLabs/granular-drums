@@ -1,5 +1,60 @@
 #include "PluginProcessor.h"
 #include "PluginEditor.h"
+#include <algorithm>
+#include <limits>
+
+namespace
+{
+constexpr const char* sampleStateName = "SAMPLE";
+constexpr const char* currentMarkersStateName = "CURRENT_MARKERS";
+constexpr const char* activeMarkersStateName = "ACTIVE_MARKERS";
+constexpr const char* markerStateName = "MARKER";
+constexpr const char* padAssignmentsStateName = "PAD_ASSIGNMENTS";
+
+void removeChildrenWithName (juce::ValueTree& tree, const juce::Identifier& childName)
+{
+    for (int i = tree.getNumChildren() - 1; i >= 0; --i)
+    {
+        if (tree.getChild (i).hasType (childName))
+            tree.removeChild (i, nullptr);
+    }
+}
+
+juce::ValueTree createMarkerTree (const char* treeName, const std::vector<OnsetMarker>& markers)
+{
+    juce::ValueTree tree (treeName);
+    for (const auto& marker : markers)
+    {
+        juce::ValueTree markerTree (markerStateName);
+        markerTree.setProperty ("sampleIndex", marker.sampleIndex, nullptr);
+        markerTree.setProperty ("confidence", marker.confidence, nullptr);
+        markerTree.setProperty ("category", marker.category, nullptr);
+        tree.addChild (markerTree, -1, nullptr);
+    }
+    return tree;
+}
+
+std::vector<OnsetMarker> readMarkerTree (const juce::ValueTree& tree)
+{
+    std::vector<OnsetMarker> markers;
+    markers.reserve ((size_t) tree.getNumChildren());
+
+    for (int i = 0; i < tree.getNumChildren(); ++i)
+    {
+        auto markerTree = tree.getChild (i);
+        if (! markerTree.hasType (markerStateName))
+            continue;
+
+        OnsetMarker marker;
+        marker.sampleIndex = (int) markerTree.getProperty ("sampleIndex", 0);
+        marker.confidence = (float) (double) markerTree.getProperty ("confidence", 0.0);
+        marker.category = markerTree.getProperty ("category", "snare").toString();
+        markers.push_back (marker);
+    }
+
+    return markers;
+}
+}
 
 GranularDrumsProcessor::GranularDrumsProcessor()
 #ifndef JucePlugin_PreferredChannelConfigurations
@@ -17,10 +72,15 @@ GranularDrumsProcessor::GranularDrumsProcessor()
     apvts (*this, nullptr, "Parameters", createParameterLayout())
 {
     clearPattern();
-    analysisEngine.onAnalysisFinished = [this] (const std::vector<OnsetMarker>& markers, const juce::AudioBuffer<float>& sourceBuffer)
+    analysisEngine.onAnalysisFinished = [this] (const std::vector<OnsetMarker>& markers,
+                                                const juce::AudioBuffer<float>& sourceBuffer,
+                                                const juce::File& sourceFile,
+                                                double sourceSampleRate)
     {
         this->currentBuffer = sourceBuffer;
         this->currentMarkers = markers;
+        this->currentSamplePath = sourceFile.getFullPathName();
+        this->currentSampleRate = sourceSampleRate > 0.0 ? sourceSampleRate : 44100.0;
         
         // Reset selection parameters to default whole-file range (0.0 to 1.0)
         if (auto* startParam = apvts.getParameter ("selectionStart"))
@@ -406,6 +466,8 @@ juce::AudioProcessorEditor* GranularDrumsProcessor::createEditor()
 void GranularDrumsProcessor::getStateInformation (juce::MemoryBlock& destData)
 {
     auto state = apvts.copyState();
+    removeChildrenWithName (state, juce::Identifier (sampleStateName));
+    removeChildrenWithName (state, juce::Identifier ("SEQUENCER"));
     
     if (apvts.state.hasProperty ("winWidth"))
         state.setProperty ("winWidth", apvts.state.getProperty ("winWidth"), nullptr);
@@ -424,6 +486,7 @@ void GranularDrumsProcessor::getStateInformation (juce::MemoryBlock& destData)
     seqTree.setProperty ("bpm", sequencerBpm, nullptr);
     
     state.addChild (seqTree, -1, nullptr);
+    _writeSampleState (state);
     
     std::unique_ptr<juce::XmlElement> xml (state.createXml());
     copyXmlToBinary (*xml, destData);
@@ -455,7 +518,7 @@ void GranularDrumsProcessor::setStateInformation (const void* data, int sizeInBy
                 sequencerBpm = (double) seqTree.getProperty ("bpm", 120.0);
             }
             
-            updateActiveSlices();
+            _restoreSampleState (newState);
             
             juce::MessageManager::callAsync ([this]() {
                 if (auto* editor = dynamic_cast<GranularDrumsEditor*> (getActiveEditor()))
@@ -463,6 +526,146 @@ void GranularDrumsProcessor::setStateInformation (const void* data, int sizeInBy
             });
         }
     }
+}
+
+void GranularDrumsProcessor::_writeSampleState (juce::ValueTree& state) const
+{
+    if (currentBuffer.getNumSamples() <= 0 || currentBuffer.getNumChannels() <= 0)
+        return;
+
+    juce::ValueTree sampleTree (sampleStateName);
+    sampleTree.setProperty ("sourcePath", currentSamplePath, nullptr);
+    sampleTree.setProperty ("sampleRate", currentSampleRate, nullptr);
+    sampleTree.setProperty ("numChannels", currentBuffer.getNumChannels(), nullptr);
+    sampleTree.setProperty ("numSamples", currentBuffer.getNumSamples(), nullptr);
+
+    juce::MemoryBlock audioBlock;
+    juce::MemoryOutputStream audioOut (audioBlock, false);
+
+    for (int sample = 0; sample < currentBuffer.getNumSamples(); ++sample)
+    {
+        for (int channel = 0; channel < currentBuffer.getNumChannels(); ++channel)
+        {
+            const float value = juce::jlimit (-1.0f, 1.0f, currentBuffer.getSample (channel, sample));
+            const auto packed = (short) juce::roundToInt (value * 32767.0f);
+            audioOut.writeShort (packed);
+        }
+    }
+
+    sampleTree.setProperty ("embeddedPcm16", juce::var (audioBlock), nullptr);
+    sampleTree.addChild (createMarkerTree (currentMarkersStateName, currentMarkers), -1, nullptr);
+    sampleTree.addChild (createMarkerTree (activeMarkersStateName, activeMarkers), -1, nullptr);
+
+    juce::ValueTree padTree (padAssignmentsStateName);
+    for (int i = 0; i < 16; ++i)
+        padTree.setProperty ("pad" + juce::String (i), padMarkerIndices[i], nullptr);
+    sampleTree.addChild (padTree, -1, nullptr);
+
+    state.addChild (sampleTree, -1, nullptr);
+}
+
+void GranularDrumsProcessor::_restoreSampleState (const juce::ValueTree& state)
+{
+    auto sampleTree = state.getChildWithName (sampleStateName);
+    if (! sampleTree.isValid())
+    {
+        currentSamplePath.clear();
+        currentBuffer.setSize (0, 0);
+        currentMarkers.clear();
+        activeMarkers.clear();
+        playbackEngine.clearPads();
+        return;
+    }
+
+    currentSamplePath = sampleTree.getProperty ("sourcePath", "").toString();
+    currentSampleRate = (double) sampleTree.getProperty ("sampleRate", 44100.0);
+
+    bool didRestoreAudio = false;
+    if (currentSamplePath.isNotEmpty())
+    {
+        juce::File sourceFile (currentSamplePath);
+        if (sourceFile.existsAsFile())
+            didRestoreAudio = _loadAudioFileIntoBuffer (sourceFile, currentBuffer, currentSampleRate);
+    }
+
+    if (! didRestoreAudio)
+        didRestoreAudio = _restoreEmbeddedAudio (sampleTree);
+
+    if (! didRestoreAudio)
+    {
+        currentBuffer.setSize (0, 0);
+        currentMarkers.clear();
+        activeMarkers.clear();
+        playbackEngine.clearPads();
+        return;
+    }
+
+    currentMarkers = readMarkerTree (sampleTree.getChildWithName (currentMarkersStateName));
+    activeMarkers = readMarkerTree (sampleTree.getChildWithName (activeMarkersStateName));
+
+    auto padTree = sampleTree.getChildWithName (padAssignmentsStateName);
+    for (int i = 0; i < 16; ++i)
+        padMarkerIndices[i] = (int) padTree.getProperty ("pad" + juce::String (i), i);
+
+    if (activeMarkers.empty())
+        updateActiveSlices();
+    else
+        _restorePadAssignments();
+}
+
+bool GranularDrumsProcessor::_loadAudioFileIntoBuffer (const juce::File& file, juce::AudioBuffer<float>& destination, double& sampleRateOut) const
+{
+    juce::AudioFormatManager formatManager;
+    formatManager.registerBasicFormats();
+
+    std::unique_ptr<juce::AudioFormatReader> reader (formatManager.createReaderFor (file));
+    if (reader == nullptr || reader->lengthInSamples <= 0 || reader->numChannels <= 0)
+        return false;
+
+    const auto numSamples = (int) std::min<int64_t> (reader->lengthInSamples, (int64_t) std::numeric_limits<int>::max());
+    destination.setSize ((int) reader->numChannels, numSamples);
+    reader->read (&destination, 0, numSamples, 0, true, true);
+    sampleRateOut = reader->sampleRate > 0.0 ? reader->sampleRate : 44100.0;
+    return true;
+}
+
+bool GranularDrumsProcessor::_restoreEmbeddedAudio (const juce::ValueTree& sampleTree)
+{
+    const int numChannels = (int) sampleTree.getProperty ("numChannels", 0);
+    const int numSamples = (int) sampleTree.getProperty ("numSamples", 0);
+    if (numChannels <= 0 || numSamples <= 0)
+        return false;
+
+    auto audioVar = sampleTree.getProperty ("embeddedPcm16");
+    auto* audioBlock = audioVar.getBinaryData();
+    if (audioBlock == nullptr || audioBlock->getSize() == 0)
+        return false;
+
+    const auto expectedBytes = (size_t) numChannels * (size_t) numSamples * sizeof (short);
+    if (audioBlock->getSize() < expectedBytes)
+        return false;
+
+    currentBuffer.setSize (numChannels, numSamples);
+    juce::MemoryInputStream audioIn (*audioBlock, false);
+
+    for (int sample = 0; sample < numSamples; ++sample)
+    {
+        for (int channel = 0; channel < numChannels; ++channel)
+        {
+            const auto packed = (short) audioIn.readShort();
+            currentBuffer.setSample (channel, sample, (float) packed / 32768.0f);
+        }
+    }
+
+    currentSampleRate = (double) sampleTree.getProperty ("sampleRate", currentSampleRate);
+    return true;
+}
+
+void GranularDrumsProcessor::_restorePadAssignments()
+{
+    playbackEngine.clearPads();
+    for (int i = 0; i < 16; ++i)
+        _assignSliceToPad (i);
 }
 
 juce::AudioProcessorValueTreeState::ParameterLayout GranularDrumsProcessor::createParameterLayout()

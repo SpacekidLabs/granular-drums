@@ -56,7 +56,7 @@ void AnalysisEngine::run()
         juce::Thread::sleep (1000);
         
         if (onAnalysisFinished)
-            onAnalysisFinished (markers, sourceBuffer);
+            onAnalysisFinished (markers, sourceBuffer, currentFile, reader->sampleRate);
     }
 
     progress = 1.0f;
